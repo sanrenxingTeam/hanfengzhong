@@ -1,0 +1,175 @@
+http://www.cnblogs.com/zhaopei/p/upload.html
+http://www.cnblogs.com/fish-li/archive/2011/07/17/2108884.html#_labelStart
+http://javascript.ruanyifeng.com/htmlapi/file.html
+
+
+1：最原始、最简单、最粗暴的文件上传
+前端代码：
+//方式1
+<form action="/Home/SaveFile1" method="post" enctype="multipart/form-data">
+     <input type="file" class="file1" name="file1" />
+     <button type="submit" class="but1">上传</button>
+</form>
+后台代码：
+public ActionResult SaveFile1()
+{
+    if (Request.Files.Count > 0)
+    {
+        Request.Files[0].SaveAs(Server.MapPath("~/App_Data/") + Request.Files[0].FileName);
+        return Content("保存成功");
+    }
+    return Content("没有读到文件");
+}
+
+2：表单异步上传（jquery.form插件）
+首先我们需要导入jquery.js和jquery.form.js
+前端代码：
+<form id="form2" action="/Home/SaveFile2" method="post" enctype="multipart/form-data">
+    <input type="file" class="file1" name="file1" />
+    <button type="submit" class="but1">上传1</button>
+    <button type="button" class="but2">上传2</button>
+</form>
+
+//方式2（通过ajaxForm绑定ajax操作）
+$(function () {
+    $('#form2').ajaxForm({
+        success: function (responseText) {
+            alert(responseText);
+        }
+    });
+});
+
+//方式3（通过ajaxSubmit直接执行ajax操作）
+$(function () {
+    $(".but2").click(function () {
+        $('#form2').ajaxSubmit({
+            success: function (responseText) {
+                alert(responseText);
+            }
+        });
+    });
+});
+
+后台代码：
+public string SaveFile2()
+{
+    if (Request.Files.Count > 0)
+    {                
+        Request.Files[0].SaveAs(Server.MapPath("~/App_Data/") + Path.GetFileName(Request.Files[0].FileName));
+        return "保存成功";
+    }
+    return "没有读到文件";
+}
+模拟表单数据上传（FormData） 不兼容低版本IE
+前端代码：
+<input id="fileinfo" type="file" class="notFormFile" />
+<button type="button" class="btnNotForm">上传4</button>
+//方式4
+$(".btnNotForm").click(function () {
+    var formData = new FormData();//初始化一个FormData对象
+    formData.append("files", $(".notFormFile")[0].files[0]);//将文件塞入FormData
+    $.ajax({
+        url: "/Home/SaveFile2",
+        type: "POST",
+        data: formData,
+        processData: false,  // 告诉jQuery不要去处理发送的数据
+        contentType: false,   // 告诉jQuery不要去设置Content-Type请求头
+        success: function (responseText) {
+            alert(responseText);
+        }
+    });
+});
+后的代码：（不变，还是上例代码）
+
+
+上面的全是表单提交或者是模拟表单提交
+
+下面不利用表单提交 
+前端代码：
+<input type="file"  id="file5" multiple>
+<button type="button" class="btnFile5">上传5</button>    
+//方式5
+$(".btnFile5").click(function () {
+    $.ajax({
+        url: "/Home/SaveFile4",
+        type: "POST",
+        data: $("#file5")[0].files[0],
+        processData: false,  // 告诉jQuery不要去处理发送的数据
+        contentType: false,   // 告诉jQuery不要去设置Content-Type请求头
+        success: function (responseText) {
+            alert(responseText);
+        }
+    });;       
+});       
+     
+后台代码：
+public string SaveFile4()
+{
+    //这里发现只能得到一个网络流，没有其他信息了。（比如，文件大小、文件格式、文件名等）
+    Request.SaveAs(Server.MapPath("~/App_Data/SaveFile4.data") + "", false);
+    return "保存成功";
+}
+细心的你发现没有了表单格式，我们除了可以上传文件流数据外，不能再告诉后台其他信息了（如文件格式）。
+到这里，我似乎明白了以前上传文件为什么非得要用个form包起来，原来这只是和后台约定的一个传输格式而已。
+其实我们单纯的用jq的ajax传输文本数据的时候，最后也是组装成了form格式的数据，如：
+ $.ajax({
+    data: { "userName": "张三" } 
+
+
+分片上传
+
+在知道了上面的各种上传之后，我们是不是就满于现状了呢？no，很多时候我们需要传输大文件，一般服务器都会有一定的大小限制。
+某天，你发现了一个激情小电影想要分享个大家。无奈，高清文件太大传不了，怎么办？我们可以化整为零，一部分一部分的传嘛，也就是所谓的分片上传。
+前端代码：
+<input type="file" id="file6" multiple>
+<button type="button" class="btnFile6">分片上传6</button>
+<div class="result"></div>
+//方式6
+ $(".btnFile6").click(function () { 
+     var upload = function (file, skip) {
+         var formData = new FormData();//初始化一个FormData对象
+         var blockSize = 1000000;//每块的大小
+         var nextSize = Math.min((skip + 1) * blockSize, file.size);//读取到结束位置             
+         var fileData = file.slice(skip * blockSize, nextSize);//截取 部分文件 块
+         formData.append("file", fileData);//将 部分文件 塞入FormData
+         formData.append("fileName", file.name);//保存文件名字
+         $.ajax({
+             url: "/Home/SaveFile6",
+             type: "POST",
+             data: formData,
+             processData: false,  // 告诉jQuery不要去处理发送的数据
+             contentType: false,   // 告诉jQuery不要去设置Content-Type请求头
+             success: function (responseText) {
+                 $(".result").html("已经上传了" + (skip + 1) + "块文件");
+                 if (file.size <= nextSize) {//如果上传完成，则跳出继续上传
+                     alert("上传完成");
+                     return;
+                 }
+                 upload(file, ++skip);//递归调用
+             }
+         });
+     };
+
+     var file = $("#file6")[0].files[0];
+     upload(file, 0);
+ }); 
+后台代码：
+public string SaveFile6()
+{
+    //保存文件到根目录 App_Data + 获取文件名称和格式
+    var filePath = Server.MapPath("~/App_Data/") + Request.Form["fileName"];
+    //创建一个追加（FileMode.Append）方式的文件流
+    using (FileStream fs = new FileStream(filePath, FileMode.Append, FileAccess.Write))
+    {
+        using (BinaryWriter bw = new BinaryWriter(fs))
+        {
+            //读取文件流
+            BinaryReader br = new BinaryReader(Request.Files[0].InputStream);
+            //将文件留转成字节数组
+            byte[] bytes = br.ReadBytes((int)Request.Files[0].InputStream.Length);
+            //将字节数组追加到文件
+            bw.Write(bytes);
+        }
+    }
+    return "保存成功";
+}
